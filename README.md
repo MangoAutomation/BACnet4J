@@ -58,7 +58,8 @@ The dependency information is BACnet4J pre 5.0 is:
 Releases
 ========
 *Version 6.0.1*
-- Allow NULL values for daily and exception schedule
+- Allow NULL values for daily schedule, exception schedule and schedule default
+- Fix scheduling issues when TimeValue sequences are not in chronological order
 
 *Version 6.0.0*
 - fix DeviceObjectTest.timeSynchronization test to pass

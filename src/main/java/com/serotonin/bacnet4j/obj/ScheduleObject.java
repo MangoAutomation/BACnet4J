@@ -177,7 +177,8 @@ public class ScheduleObject extends BACnetObject {
                 final ObjectPropertyTypeDefinition def = ObjectProperties.getObjectPropertyTypeDefinition(
                         ref.getObjectIdentifier().getObjectType(), ref.getPropertyIdentifier());
                 if (def != null) {
-                    if (scheduleDefault.getClass() != def.getPropertyTypeDefinition().getClazz()) {
+                    boolean isNull = scheduleDefault.getClass().equals(Null.class);
+                    if (!isNull && scheduleDefault.getClass() != def.getPropertyTypeDefinition().getClazz()) {
                         throw new BACnetServiceException(ErrorClass.property, ErrorCode.invalidDataType);
                     }
                 }
@@ -188,7 +189,8 @@ public class ScheduleObject extends BACnetObject {
             final BACnetArray<DailySchedule> weeklySchedule = value.getValue();
             for (final DailySchedule daily : weeklySchedule) {
                 for (final TimeValue timeValue : daily.getDaySchedule()) {
-                    if (!timeValue.getValue().getClass().equals(Null.class) && scheduleDefault.getClass() != timeValue.getValue().getClass()) {
+                    boolean isNull = timeValue.getValue().getClass().equals(Null.class) || scheduleDefault.getClass().equals(Null.class);
+                    if (!isNull &&  scheduleDefault.getClass() != timeValue.getValue().getClass()) {
                         throw new BACnetServiceException(ErrorClass.property, ErrorCode.invalidDataType);
                     }
                     if (!timeValue.getTime().isFullySpecified()) {
@@ -202,7 +204,8 @@ public class ScheduleObject extends BACnetObject {
             final SequenceOf<SpecialEvent> exceptionSchedule = value.getValue();
             for (final SpecialEvent specialEvent : exceptionSchedule) {
                 for (final TimeValue timeValue : specialEvent.getListOfTimeValues()) {
-                    if (!timeValue.getValue().getClass().equals(Null.class) && scheduleDefault.getClass() != timeValue.getValue().getClass()) {
+                    boolean isNull = timeValue.getValue().getClass().equals(Null.class) || scheduleDefault.getClass().equals(Null.class);
+                    if (!isNull &&  scheduleDefault.getClass() != timeValue.getValue().getClass()) {
                         throw new BACnetServiceException(ErrorClass.property, ErrorCode.invalidDataType);
                     }
                     if (!timeValue.getTime().isFullySpecified()) {
@@ -334,9 +337,10 @@ public class ScheduleObject extends BACnetObject {
                     final TimeValue tv = schedule.getBase1(tvIndex);
 
                     if (!tv.getTime().after(now.getTime())) {
-                        // Found a time value entry that can be used.
-                        currentTv = tv;
-                        break;
+                        // Find time value entry that should be used
+                        if (currentTv == null || tv.getTime().after(currentTv.getTime())) {
+                            currentTv = tv;
+                        }
                     }
                 }
 

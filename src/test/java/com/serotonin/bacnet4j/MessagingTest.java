@@ -325,6 +325,7 @@ public class MessagingTest {
         d1.initialize();
 
         LocalDevice d2 = new LocalDevice(2, new DefaultTransport(new TestNetwork(map, 2, 0)));
+        d2.writePropertyInternal(PropertyIdentifier.maxSegmentsAccepted, new UnsignedInteger(512));
         for (int i = 0; i < objectCount; i++)
             createAnalogValue(d2, i);
         d2.initialize();

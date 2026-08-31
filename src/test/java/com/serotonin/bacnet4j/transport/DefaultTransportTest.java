@@ -29,6 +29,7 @@ package com.serotonin.bacnet4j.transport;
 
 import static com.serotonin.bacnet4j.TestUtils.await;
 import static com.serotonin.bacnet4j.TestUtils.awaitEquals;
+import static com.serotonin.bacnet4j.TestUtils.quiesce;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
@@ -92,7 +93,6 @@ import com.serotonin.bacnet4j.type.primitive.CharacterString;
 import com.serotonin.bacnet4j.type.primitive.ObjectIdentifier;
 import com.serotonin.bacnet4j.type.primitive.UnsignedInteger;
 import com.serotonin.bacnet4j.util.sero.ByteQueue;
-import com.serotonin.bacnet4j.util.sero.ThreadUtils;
 
 public class DefaultTransportTest {
     // Recreation of this issue: https://github.com/infiniteautomation/BACnet4J/issues/8
@@ -124,7 +124,7 @@ public class DefaultTransportTest {
         addIncomingSegmentedMessage(true, 3, 1, from, transport, null);
 
         // Wait for the message to time out.
-        ThreadUtils.sleep(transport.getSegTimeout() * 8L);
+        quiesce(transport.getSegTimeout() * 8L);
 
         // Clean up
         transport.terminate();
@@ -168,7 +168,7 @@ public class DefaultTransportTest {
             addIncomingSegmentedMessage(seq != 5, 3, seq, from, transport, service);
 
         // Wait for the messages to be processed.
-        ThreadUtils.sleep(100);
+        quiesce(100);
 
         transport.terminate();
 
@@ -231,7 +231,7 @@ public class DefaultTransportTest {
         // Segment 2 is expected, so segment 3 is out of order.
         addIncomingSegmentedMessage(true, 3, 3, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         // The message was not completed, and the out-of-order segment was not saved.
@@ -274,7 +274,7 @@ public class DefaultTransportTest {
 
         addIncomingSegmentedMessage(true, proposedWindowSize, 0, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verify(service, never()).handle(any(), any());
@@ -310,7 +310,7 @@ public class DefaultTransportTest {
         // A segment with a non-zero sequence number, for which no transaction exists.
         addIncomingSegmentedMessage(true, 3, 4, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verify(network).sendAPDU(eq(from), any(),
@@ -332,6 +332,7 @@ public class DefaultTransportTest {
         final LocalDevice localDevice = mock(LocalDevice.class);
         when(localDevice.getClock()).thenReturn(Clock.systemUTC());
         when(localDevice.getEventHandler()).thenReturn(new DeviceEventHandler());
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new UnsignedInteger(512));
 
         final ServicesSupported servicesSupported = new ServicesSupported();
         servicesSupported.setAll(true);
@@ -349,7 +350,7 @@ public class DefaultTransportTest {
         for (int i = 1; i < segmentCount; i++)
             addIncomingSegmentedMessage(i != segmentCount - 1, 4, i & 0xff, from, transport, service);
 
-        ThreadUtils.sleep(500);
+        quiesce();
         transport.terminate();
 
         // The message completed, which requires the sequence number wrap at segment 256 to have been handled.
@@ -393,7 +394,7 @@ public class DefaultTransportTest {
         for (int i = 0; i < windowSize; i++)
             addIncomingSegmentedMessage(true, windowSize, 1, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
 
         // Only the acknowledgement of the opening segment has been sent. Segment 1 does not complete the window.
         verify(network, times(1)).sendAPDU(any(), any(), any(SegmentACK.class), anyBoolean());
@@ -401,7 +402,7 @@ public class DefaultTransportTest {
         // One more duplicate produces a negative acknowledgement of the last segment received in order.
         addIncomingSegmentedMessage(true, windowSize, 1, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verifySegmentAck(network, from, true, 1, windowSize);
@@ -442,13 +443,13 @@ public class DefaultTransportTest {
         // Segment 5 opens the next window.
         addIncomingSegmentedMessage(true, windowSize, 5, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         verify(network, times(2)).sendAPDU(any(), any(), any(SegmentACK.class), anyBoolean());
 
         // A retransmission of a segment of the previous window is dropped without a negative acknowledgement.
         addIncomingSegmentedMessage(true, windowSize, 3, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verify(network, times(2)).sendAPDU(any(), any(), any(SegmentACK.class), anyBoolean());
@@ -600,7 +601,7 @@ public class DefaultTransportTest {
                 return sent.size();
             }
         });
-        ThreadUtils.sleep(100);
+        quiesce(100);
 
         transport.terminate();
 
@@ -648,7 +649,7 @@ public class DefaultTransportTest {
         when(unsegmented.getServiceData()).thenReturn(new ByteQueue(new byte[] {(byte) 0xff}));
         addIncomingNPDU(transport, from, unsegmented);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         // The transaction is aborted, the unsegmented request is not handled, and its data is not appended to the
@@ -682,7 +683,7 @@ public class DefaultTransportTest {
         // A segment ack from a server, for which this device has no transaction.
         addIncomingNPDU(transport, from, new SegmentACK(false, true, (byte) 7, 0, 2, false));
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         // This device is the client of that transaction, so the abort carries 'server' = FALSE.
@@ -822,7 +823,7 @@ public class DefaultTransportTest {
         assertTrue(await(() -> failure.get() != null, 1_000));
 
         // Nothing further is sent, and the transaction is gone.
-        ThreadUtils.sleep(200);
+        quiesce(200);
         transport.terminate();
 
         assertEquals(new Abort(true, invokeId, AbortReason.bufferOverflow), failure.get());
@@ -869,7 +870,7 @@ public class DefaultTransportTest {
         for (int seq = 1; seq <= maxSegments; seq++)
             addIncomingSegmentedMessage(true, 2, seq, from, transport, service);
 
-        ThreadUtils.sleep(200);
+        quiesce(200);
         transport.terminate();
 
         // The transaction is aborted rather than assembled, and the segment beyond the limit is not saved.
@@ -913,7 +914,7 @@ public class DefaultTransportTest {
         for (int seq = 1; seq < maxSegments; seq++)
             addIncomingSegmentedMessage(seq != maxSegments - 1, 2, seq, from, transport, service);
 
-        ThreadUtils.sleep(200);
+        quiesce(200);
         transport.terminate();
 
         verify(service).handle(localDevice, from);

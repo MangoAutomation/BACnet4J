@@ -469,7 +469,7 @@ public abstract class Encodable {
     }
 
     /**
-     * Peeks at the byte following the opening context tag and reports whether it is a NULL primitive
+     * Reports whether the value between the opening context tag and its closing tag is a lone NULL primitive
      * (application tag 0, length 0). Used by {@link #readANY} to detect a relinquish-style Null value
      * that would otherwise be rejected by strict-type decode. Does not consume any bytes.
      */
@@ -477,13 +477,29 @@ public abstract class Encodable {
         if (readStart(queue) != contextId) {
             return false;
         }
-        int startTagLength = contextId > 14 ? 2 : 1;
-        if (queue.size() < startTagLength + 2) {
+        int tagLength = contextId > 14 ? 2 : 1;
+        if (queue.size() < tagLength + 1 + tagLength) {
             return false;
         }
         // The byte after the opening context tag encodes the value tag. NULL is application tag 0, primitive,
-        // length 0 — a single 0x00 byte. The following byte should be the closing context tag.
-        return (queue.peek(startTagLength) & 0xff) == 0x00;
+        // length 0 — a single 0x00 byte. The closing context tag must immediately follow it, otherwise this is a
+        // constructed value that merely begins with a NULL, such as a priority array whose first element is NULL.
+        return (queue.peek(tagLength) & 0xff) == 0x00 && isEndTagAt(queue, tagLength + 1, contextId);
+    }
+
+    /**
+     * Return true if the tag at the given index of the queue is the closing tag for contextId. A tag that runs off
+     * the end of the queue, as it does in a truncated message, is not a match. Does not consume any bytes.
+     */
+    private static boolean isEndTagAt(ByteQueue queue, int index, int contextId) {
+        if (index >= queue.size())
+            return false;
+        int b = toInt(queue.peek(index));
+        if ((b & 0xf) != 0xf)
+            return false;
+        if ((b & 0xf0) == 0xf0)
+            return index + 1 < queue.size() && toInt(queue.peek(index + 1)) == contextId;
+        return (b >> 4) == contextId;
     }
 
     /**

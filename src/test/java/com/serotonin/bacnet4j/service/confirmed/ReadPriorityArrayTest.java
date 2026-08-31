@@ -47,6 +47,7 @@ import com.serotonin.bacnet4j.type.enumerated.EngineeringUnits;
 import com.serotonin.bacnet4j.type.enumerated.ObjectType;
 import com.serotonin.bacnet4j.type.enumerated.PropertyIdentifier;
 import com.serotonin.bacnet4j.type.primitive.ObjectIdentifier;
+import com.serotonin.bacnet4j.type.primitive.Real;
 import com.serotonin.bacnet4j.type.primitive.UnsignedInteger;
 
 public class ReadPriorityArrayTest {
@@ -101,6 +102,25 @@ public class ReadPriorityArrayTest {
         assertEquals(UnsignedInteger.class, ack.getValue().getClass());
         //Check the Size
         assertEquals("16", ack.getValue().toString());
+    }
+
+    /**
+     * A priority array whose first element is Null, as it is when a value has only been commanded at a lower
+     * priority, must decode as a priority array rather than as the Null of its first element.
+     */
+    @Test
+    public void readPriorityArrayWithNullFirstElement() throws BACnetException {
+        // Only the eighth element is set, so the first is Null.
+        final PriorityArray nullFirst = new PriorityArray().put(8, new Real(12.3f));
+        remoteDevice.<AnalogValueObject>getObject(new ObjectIdentifier(ObjectType.analogValue, 1))
+                .writePropertyInternal(PropertyIdentifier.priorityArray, nullFirst);
+
+        final ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
+                PropertyIdentifier.priorityArray);
+        final ReadPropertyAck ack = localDevice.send(rDevice, req).get();
+
+        assertEquals(PriorityArray.class, ack.getValue().getClass());
+        assertEquals(nullFirst, ack.getValue());
     }
 
     @Test

@@ -530,12 +530,16 @@ public class TestUtils {
         }
     }
 
+    public static void quiesce() {
+        quiesce(500);
+    }
+
     /**
      * Sleep for a given period before continuing to ensure that nothing happens during that time. This is frequently
      * used to ensure that notifications are not sent following some activity.
      */
-    public static void quiesce() {
-        ThreadUtils.sleep(500);
+    public static void quiesce(long millis) {
+        ThreadUtils.sleep(millis);
     }
 
     /**

@@ -29,6 +29,7 @@ package com.serotonin.bacnet4j.transport;
 
 import static com.serotonin.bacnet4j.TestUtils.await;
 import static com.serotonin.bacnet4j.TestUtils.awaitEquals;
+import static com.serotonin.bacnet4j.TestUtils.quiesce;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
@@ -66,11 +67,13 @@ import com.serotonin.bacnet4j.apdu.ConfirmedRequest;
 import com.serotonin.bacnet4j.apdu.SegmentACK;
 import com.serotonin.bacnet4j.apdu.Segmentable;
 import com.serotonin.bacnet4j.enums.MaxApduLength;
+import com.serotonin.bacnet4j.enums.MaxSegments;
 import com.serotonin.bacnet4j.event.DeviceEventHandler;
 import com.serotonin.bacnet4j.exception.BACnetException;
 import com.serotonin.bacnet4j.exception.BACnetTimeoutException;
 import com.serotonin.bacnet4j.npdu.NPDU;
 import com.serotonin.bacnet4j.npdu.Network;
+import com.serotonin.bacnet4j.obj.DeviceObject;
 import com.serotonin.bacnet4j.service.acknowledgement.AcknowledgementService;
 import com.serotonin.bacnet4j.service.acknowledgement.ReadPropertyMultipleAck;
 import com.serotonin.bacnet4j.service.confirmed.ConfirmedRequestService;
@@ -88,8 +91,8 @@ import com.serotonin.bacnet4j.type.enumerated.PropertyIdentifier;
 import com.serotonin.bacnet4j.type.enumerated.Segmentation;
 import com.serotonin.bacnet4j.type.primitive.CharacterString;
 import com.serotonin.bacnet4j.type.primitive.ObjectIdentifier;
+import com.serotonin.bacnet4j.type.primitive.UnsignedInteger;
 import com.serotonin.bacnet4j.util.sero.ByteQueue;
-import com.serotonin.bacnet4j.util.sero.ThreadUtils;
 
 public class DefaultTransportTest {
     // Recreation of this issue: https://github.com/infiniteautomation/BACnet4J/issues/8
@@ -121,7 +124,7 @@ public class DefaultTransportTest {
         addIncomingSegmentedMessage(true, 3, 1, from, transport, null);
 
         // Wait for the message to time out.
-        ThreadUtils.sleep(transport.getSegTimeout() * 8L);
+        quiesce(transport.getSegTimeout() * 8L);
 
         // Clean up
         transport.terminate();
@@ -165,7 +168,7 @@ public class DefaultTransportTest {
             addIncomingSegmentedMessage(seq != 5, 3, seq, from, transport, service);
 
         // Wait for the messages to be processed.
-        ThreadUtils.sleep(100);
+        quiesce(100);
 
         transport.terminate();
 
@@ -228,7 +231,7 @@ public class DefaultTransportTest {
         // Segment 2 is expected, so segment 3 is out of order.
         addIncomingSegmentedMessage(true, 3, 3, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         // The message was not completed, and the out-of-order segment was not saved.
@@ -271,7 +274,7 @@ public class DefaultTransportTest {
 
         addIncomingSegmentedMessage(true, proposedWindowSize, 0, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verify(service, never()).handle(any(), any());
@@ -307,7 +310,7 @@ public class DefaultTransportTest {
         // A segment with a non-zero sequence number, for which no transaction exists.
         addIncomingSegmentedMessage(true, 3, 4, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verify(network).sendAPDU(eq(from), any(),
@@ -329,6 +332,7 @@ public class DefaultTransportTest {
         final LocalDevice localDevice = mock(LocalDevice.class);
         when(localDevice.getClock()).thenReturn(Clock.systemUTC());
         when(localDevice.getEventHandler()).thenReturn(new DeviceEventHandler());
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new UnsignedInteger(512));
 
         final ServicesSupported servicesSupported = new ServicesSupported();
         servicesSupported.setAll(true);
@@ -346,7 +350,7 @@ public class DefaultTransportTest {
         for (int i = 1; i < segmentCount; i++)
             addIncomingSegmentedMessage(i != segmentCount - 1, 4, i & 0xff, from, transport, service);
 
-        ThreadUtils.sleep(500);
+        quiesce();
         transport.terminate();
 
         // The message completed, which requires the sequence number wrap at segment 256 to have been handled.
@@ -390,7 +394,7 @@ public class DefaultTransportTest {
         for (int i = 0; i < windowSize; i++)
             addIncomingSegmentedMessage(true, windowSize, 1, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
 
         // Only the acknowledgement of the opening segment has been sent. Segment 1 does not complete the window.
         verify(network, times(1)).sendAPDU(any(), any(), any(SegmentACK.class), anyBoolean());
@@ -398,7 +402,7 @@ public class DefaultTransportTest {
         // One more duplicate produces a negative acknowledgement of the last segment received in order.
         addIncomingSegmentedMessage(true, windowSize, 1, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verifySegmentAck(network, from, true, 1, windowSize);
@@ -439,13 +443,13 @@ public class DefaultTransportTest {
         // Segment 5 opens the next window.
         addIncomingSegmentedMessage(true, windowSize, 5, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         verify(network, times(2)).sendAPDU(any(), any(), any(SegmentACK.class), anyBoolean());
 
         // A retransmission of a segment of the previous window is dropped without a negative acknowledgement.
         addIncomingSegmentedMessage(true, windowSize, 3, from, transport, service);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         verify(network, times(2)).sendAPDU(any(), any(), any(SegmentACK.class), anyBoolean());
@@ -597,7 +601,7 @@ public class DefaultTransportTest {
                 return sent.size();
             }
         });
-        ThreadUtils.sleep(100);
+        quiesce(100);
 
         transport.terminate();
 
@@ -645,7 +649,7 @@ public class DefaultTransportTest {
         when(unsegmented.getServiceData()).thenReturn(new ByteQueue(new byte[] {(byte) 0xff}));
         addIncomingNPDU(transport, from, unsegmented);
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         // The transaction is aborted, the unsegmented request is not handled, and its data is not appended to the
@@ -679,7 +683,7 @@ public class DefaultTransportTest {
         // A segment ack from a server, for which this device has no transaction.
         addIncomingNPDU(transport, from, new SegmentACK(false, true, (byte) 7, 0, 2, false));
 
-        ThreadUtils.sleep(100);
+        quiesce(100);
         transport.terminate();
 
         // This device is the client of that transaction, so the abort carries 'server' = FALSE.
@@ -819,7 +823,7 @@ public class DefaultTransportTest {
         assertTrue(await(() -> failure.get() != null, 1_000));
 
         // Nothing further is sent, and the transaction is gone.
-        ThreadUtils.sleep(200);
+        quiesce(200);
         transport.terminate();
 
         assertEquals(new Abort(true, invokeId, AbortReason.bufferOverflow), failure.get());
@@ -829,6 +833,167 @@ public class DefaultTransportTest {
             for (final APDU apdu : sent)
                 assertFalse("an abort must not be answered with an abort", apdu instanceof Abort);
         }
+    }
+
+    /**
+     * Clause 5.4.4.4 NewSegmentReceived_NoSpace. A message longer than this device is prepared to assemble is
+     * aborted with `bufferOverflow` rather than accumulated until the heap is exhausted.
+     */
+    @Test
+    public void incomingMessageBeyondTheSegmentLimitIsAborted() throws Exception {
+        final int maxSegments = 5;
+
+        final Network network = mock(Network.class);
+        when(network.isThisNetwork(any())).thenReturn(true);
+        when(network.getAllLocalAddresses()).thenReturn(new Address[] {getSourceAddress()});
+
+        final LocalDevice localDevice = mock(LocalDevice.class);
+        when(localDevice.getClock()).thenReturn(Clock.systemUTC());
+        when(localDevice.getEventHandler()).thenReturn(new DeviceEventHandler());
+
+        final ServicesSupported servicesSupported = new ServicesSupported();
+        servicesSupported.setAll(true);
+        when(localDevice.getServicesSupported()).thenReturn(servicesSupported);
+
+        final DefaultTransport transport = new DefaultTransport(network);
+        transport.setLocalDevice(localDevice);
+        transport.setSegWindow(2);
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted))
+                .thenReturn(new UnsignedInteger(maxSegments));
+        transport.initialize();
+
+        final Address from = new Address(0, new byte[] {1});
+        final ConfirmedRequestService service = mock(ConfirmedRequestService.class);
+
+        // Send more segments than the limit allows, all of them in order and all claiming more to follow.
+        final Segmentable request = addIncomingSegmentedMessage(true, 2, 0, from, transport, service);
+        for (int seq = 1; seq <= maxSegments; seq++)
+            addIncomingSegmentedMessage(true, 2, seq, from, transport, service);
+
+        quiesce(200);
+        transport.terminate();
+
+        // The transaction is aborted rather than assembled, and the segment beyond the limit is not saved.
+        verify(network).sendAPDU(eq(from), any(), eq(new Abort(true, (byte) 0, AbortReason.bufferOverflow)),
+                eq(false));
+        verify(service, never()).handle(any(), any());
+        verify(request, times(maxSegments - 1)).appendServiceData(any(ByteQueue.class));
+        assertTrue(transport.unackedMessages.getRequests().isEmpty());
+    }
+
+    /**
+     * A message of exactly the segment limit is still accepted, so the bound is inclusive.
+     */
+    @Test
+    public void incomingMessageAtTheSegmentLimitIsAccepted() throws Exception {
+        final int maxSegments = 5;
+
+        final Network network = mock(Network.class);
+        when(network.isThisNetwork(any())).thenReturn(true);
+        when(network.getAllLocalAddresses()).thenReturn(new Address[] {getSourceAddress()});
+
+        final LocalDevice localDevice = mock(LocalDevice.class);
+        when(localDevice.getClock()).thenReturn(Clock.systemUTC());
+        when(localDevice.getEventHandler()).thenReturn(new DeviceEventHandler());
+
+        final ServicesSupported servicesSupported = new ServicesSupported();
+        servicesSupported.setAll(true);
+        when(localDevice.getServicesSupported()).thenReturn(servicesSupported);
+
+        final DefaultTransport transport = new DefaultTransport(network);
+        transport.setLocalDevice(localDevice);
+        transport.setSegWindow(2);
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted))
+                .thenReturn(new UnsignedInteger(maxSegments));
+        transport.initialize();
+
+        final Address from = new Address(0, new byte[] {1});
+        final ConfirmedRequestService service = mock(ConfirmedRequestService.class);
+
+        addIncomingSegmentedMessage(true, 2, 0, from, transport, service);
+        for (int seq = 1; seq < maxSegments; seq++)
+            addIncomingSegmentedMessage(seq != maxSegments - 1, 2, seq, from, transport, service);
+
+        quiesce(200);
+        transport.terminate();
+
+        verify(service).handle(localDevice, from);
+        verify(network, never()).sendAPDU(any(), any(), any(Abort.class), anyBoolean());
+    }
+
+    /**
+     * The segment limit is advertised to peers in the 'max-segments-accepted' field of outgoing confirmed requests,
+     * rather than the previously hardcoded 'more than 64'.
+     */
+    @Test(timeout = 10_000)
+    public void segmentLimitIsAdvertisedInConfirmedRequests() throws Exception {
+        final Network network = mock(Network.class);
+        when(network.isThisNetwork(any())).thenReturn(true);
+        when(network.getAllLocalAddresses()).thenReturn(new Address[] {getSourceAddress()});
+        when(network.getMaxApduLength()).thenReturn(MaxApduLength.UP_TO_1476);
+
+        final var sent = new ArrayList<ConfirmedRequest>();
+        doAnswer(invocation -> {
+            APDU apdu = invocation.getArgument(2);
+            if (apdu instanceof ConfirmedRequest cr)
+                synchronized (sent) {
+                    sent.add(cr);
+                }
+            return null;
+        }).when(network).sendAPDU(any(), any(), any(), anyBoolean());
+
+        final LocalDevice localDevice = mock(LocalDevice.class);
+        when(localDevice.getClock()).thenReturn(Clock.systemUTC());
+        when(localDevice.getServicesSupported()).thenReturn(new ServicesSupported());
+        when(localDevice.getCommunicationControlState()).thenReturn(EnableDisable.enable);
+
+        final DefaultTransport transport = new DefaultTransport(network);
+        transport.setLocalDevice(localDevice);
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new UnsignedInteger(16));
+        transport.initialize();
+
+        transport.send(new Address(0, new byte[] {1}), 1476, Segmentation.segmentedBoth,
+                buildReadPropertyMultipleRequest(1));
+
+        awaitEquals(1, () -> {
+            synchronized (sent) {
+                return sent.size();
+            }
+        });
+        transport.terminate();
+
+        synchronized (sent) {
+            assertEquals(MaxSegments.UP_TO_16, sent.get(0).getMaxSegmentsAccepted());
+        }
+    }
+
+
+    /**
+     * The limit comes from the local device's Max_Segments_Accepted property, so that it cannot disagree with what
+     * this device advertises to peers. A value that is absent, of the wrong type, or below the minimum of clause
+     * 12.11.20 falls back to the default rather than leaving a message unbounded.
+     */
+    @Test
+    public void maxSegmentsComesFromTheDeviceObject() {
+        final LocalDevice localDevice = mock(LocalDevice.class);
+        final DefaultTransport transport = new DefaultTransport(mock(Network.class));
+        transport.setLocalDevice(localDevice);
+
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new UnsignedInteger(64));
+        assertEquals(64, transport.getMaxSegments());
+
+        // Client code can change the property, and the transport follows it.
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new UnsignedInteger(2));
+        assertEquals(2, transport.getMaxSegments());
+
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(null);
+        assertEquals(DeviceObject.DEFAULT_MAX_SEGMENTS_ACCEPTED, transport.getMaxSegments());
+
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new UnsignedInteger(1));
+        assertEquals(DeviceObject.DEFAULT_MAX_SEGMENTS_ACCEPTED, transport.getMaxSegments());
+
+        when(localDevice.get(PropertyIdentifier.maxSegmentsAccepted)).thenReturn(new CharacterString("nonsense"));
+        assertEquals(DeviceObject.DEFAULT_MAX_SEGMENTS_ACCEPTED, transport.getMaxSegments());
     }
 
     private static void verifySegmentAck(Network network, Address to, boolean negativeAck, int sequenceNumber,

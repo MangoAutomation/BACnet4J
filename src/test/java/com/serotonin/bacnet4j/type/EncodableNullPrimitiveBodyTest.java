@@ -54,9 +54,9 @@ public class EncodableNullPrimitiveBodyTest {
 
     @Test
     public void loneNullDecodesAsNull() throws BACnetException {
-        final ByteQueue queue = wrap(Null.instance, 4);
+        ByteQueue queue = wrap(Null.instance, 4);
 
-        final Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PRIMITIVE_PROPERTY, null, 4);
+        Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PRIMITIVE_PROPERTY, null, 4);
 
         assertEquals(Null.class, value.getClass());
         assertEquals("the whole value should be consumed", 0, queue.size());
@@ -68,9 +68,9 @@ public class EncodableNullPrimitiveBodyTest {
      */
     @Test
     public void loneNullWithExtendedTagDecodesAsNull() throws BACnetException {
-        final ByteQueue queue = wrap(Null.instance, 15);
+        ByteQueue queue = wrap(Null.instance, 15);
 
-        final Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PRIMITIVE_PROPERTY, null, 15);
+        Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PRIMITIVE_PROPERTY, null, 15);
 
         assertEquals(Null.class, value.getClass());
         assertEquals("the whole value should be consumed", 0, queue.size());
@@ -78,10 +78,10 @@ public class EncodableNullPrimitiveBodyTest {
 
     @Test
     public void priorityArrayWithNullFirstElementDecodesAsPriorityArray() throws BACnetException {
-        final PriorityArray array = new PriorityArray().put(8, new Real(12.3f));
-        final ByteQueue queue = wrap(array, 4);
+        PriorityArray array = new PriorityArray().put(8, new Real(12.3f));
+        ByteQueue queue = wrap(array, 4);
 
-        final Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PropertyIdentifier.priorityArray,
+        Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PropertyIdentifier.priorityArray,
                 null, 4);
 
         assertEquals(array, value);
@@ -90,10 +90,10 @@ public class EncodableNullPrimitiveBodyTest {
 
     @Test
     public void priorityArrayWithNullFirstElementAndExtendedTagDecodesAsPriorityArray() throws BACnetException {
-        final PriorityArray array = new PriorityArray().put(8, new Real(12.3f));
-        final ByteQueue queue = wrap(array, 15);
+        PriorityArray array = new PriorityArray().put(8, new Real(12.3f));
+        ByteQueue queue = wrap(array, 15);
 
-        final Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PropertyIdentifier.priorityArray,
+        Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PropertyIdentifier.priorityArray,
                 null, 15);
 
         assertEquals(array, value);
@@ -106,10 +106,10 @@ public class EncodableNullPrimitiveBodyTest {
      */
     @Test
     public void priorityArrayOfAllNullsDecodesAsPriorityArray() throws BACnetException {
-        final PriorityArray array = new PriorityArray();
-        final ByteQueue queue = wrap(array, 4);
+        PriorityArray array = new PriorityArray();
+        ByteQueue queue = wrap(array, 4);
 
-        final Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PropertyIdentifier.priorityArray,
+        Encodable value = Encodable.readANY(queue, ObjectType.analogValue, PropertyIdentifier.priorityArray,
                 null, 4);
 
         assertEquals(array, value);
@@ -122,7 +122,7 @@ public class EncodableNullPrimitiveBodyTest {
      */
     @Test
     public void truncatedExtendedClosingTagIsReportedAsABACnetError() {
-        final ByteQueue queue = new ByteQueue();
+        ByteQueue queue = new ByteQueue();
         queue.push("4e"); // Opening tag, context id 4.
         queue.push("00"); // NULL.
         queue.push("ff"); // The first octet of an extended closing tag, with its tag number octet missing.
@@ -133,7 +133,7 @@ public class EncodableNullPrimitiveBodyTest {
 
     @Test
     public void missingClosingTagIsReportedAsABACnetError() {
-        final ByteQueue queue = new ByteQueue();
+        ByteQueue queue = new ByteQueue();
         queue.push("4e"); // Opening tag, context id 4.
         queue.push("00"); // NULL, and then nothing at all.
 
@@ -146,15 +146,15 @@ public class EncodableNullPrimitiveBodyTest {
      * which is how a property value is carried. Written here rather than with Encodable's own context write because
      * a primitive encodes itself with a single context tag instead.
      */
-    private static ByteQueue wrap(final Encodable value, final int contextId) {
-        final ByteQueue queue = new ByteQueue();
+    private static ByteQueue wrap(Encodable value, int contextId) {
+        ByteQueue queue = new ByteQueue();
         pushContextTag(queue, contextId, true);
         value.write(queue);
         pushContextTag(queue, contextId, false);
         return queue;
     }
 
-    private static void pushContextTag(final ByteQueue queue, final int contextId, final boolean start) {
+    private static void pushContextTag(ByteQueue queue, int contextId, boolean start) {
         if (contextId <= 14) {
             queue.push(contextId << 4 | (start ? 0xe : 0xf));
         } else {

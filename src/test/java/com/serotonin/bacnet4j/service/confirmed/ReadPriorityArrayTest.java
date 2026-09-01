@@ -47,6 +47,7 @@ import com.serotonin.bacnet4j.type.enumerated.EngineeringUnits;
 import com.serotonin.bacnet4j.type.enumerated.ObjectType;
 import com.serotonin.bacnet4j.type.enumerated.PropertyIdentifier;
 import com.serotonin.bacnet4j.type.primitive.ObjectIdentifier;
+import com.serotonin.bacnet4j.type.primitive.Real;
 import com.serotonin.bacnet4j.type.primitive.UnsignedInteger;
 
 public class ReadPriorityArrayTest {
@@ -68,7 +69,7 @@ public class ReadPriorityArrayTest {
         //Add Objects and properties
         priorityArray = new PriorityArray().put(1, new UnsignedInteger(11111)).put(2, new UnsignedInteger(22222)).put(3,
                 new UnsignedInteger(33333));
-        final AnalogValueObject analogValueObject = remoteDevice.addObject(new AnalogValueObject(
+        AnalogValueObject analogValueObject = remoteDevice.addObject(new AnalogValueObject(
                 remoteDevice, 1, "analogValueOne", 77.7f, EngineeringUnits.degreesFahrenheit, false));
         analogValueObject.writePropertyInternal(PropertyIdentifier.priorityArray, priorityArray);
 
@@ -84,9 +85,9 @@ public class ReadPriorityArrayTest {
 
     @Test
     public void readPriorityArrayCompletely() throws BACnetException {
-        final ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
+        ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
                 PropertyIdentifier.priorityArray);
-        final ReadPropertyAck ack = localDevice.send(rDevice, req).get();
+        ReadPropertyAck ack = localDevice.send(rDevice, req).get();
         //Check the Class
         assertEquals(PriorityArray.class, ack.getValue().getClass());
         assertEquals(priorityArray.toString(), ack.getValue().toString());
@@ -94,20 +95,39 @@ public class ReadPriorityArrayTest {
 
     @Test
     public void readPriorityArraySize() throws BACnetException {
-        final ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
+        ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
                 PropertyIdentifier.priorityArray, new UnsignedInteger(0)); //Reading size going wrong
-        final ReadPropertyAck ack = localDevice.send(rDevice, req).get();
+        ReadPropertyAck ack = localDevice.send(rDevice, req).get();
         //Check the Class
         assertEquals(UnsignedInteger.class, ack.getValue().getClass());
         //Check the Size
         assertEquals("16", ack.getValue().toString());
     }
 
+    /**
+     * A priority array whose first element is Null, as it is when a value has only been commanded at a lower
+     * priority, must decode as a priority array rather than as the Null of its first element.
+     */
+    @Test
+    public void readPriorityArrayWithNullFirstElement() throws BACnetException {
+        // Only the eighth element is set, so the first is Null.
+        PriorityArray nullFirst = new PriorityArray().put(8, new Real(12.3f));
+        remoteDevice.<AnalogValueObject>getObject(new ObjectIdentifier(ObjectType.analogValue, 1))
+                .writePropertyInternal(PropertyIdentifier.priorityArray, nullFirst);
+
+        ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
+                PropertyIdentifier.priorityArray);
+        ReadPropertyAck ack = localDevice.send(rDevice, req).get();
+
+        assertEquals(PriorityArray.class, ack.getValue().getClass());
+        assertEquals(nullFirst, ack.getValue());
+    }
+
     @Test
     public void readPriorityArrayElement() throws BACnetException {
-        final ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
+        ReadPropertyRequest req = new ReadPropertyRequest(new ObjectIdentifier(ObjectType.analogValue, 1),
                 PropertyIdentifier.priorityArray, new UnsignedInteger(3)); //Reading element going wrong
-        final ReadPropertyAck ack = localDevice.send(rDevice, req).get();
+        ReadPropertyAck ack = localDevice.send(rDevice, req).get();
         //Check the Class
         assertEquals(PriorityValue.class, ack.getValue().getClass());
         //Check the Size
